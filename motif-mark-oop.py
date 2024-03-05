@@ -43,6 +43,50 @@ ambig_nucleotides = {
 }
 
 
+##################################################################################################################################################################################################################################
+# Functions
+##################################################################################################################################################################################################################################
+'''
+Functions to parse input files and create object lists.
+'''
+
+
+def parse_fasta(filepath):
+    '''Parses a FASTA file and creates a list of transcript objects from header and sequence.'''
+    transcripts_list = []
+
+    with open(filepath) as fa_file:
+        readname = ""
+        seq = ""
+        for line in fa_file:
+            line = line.strip()
+            if line.startswith(">") and readname == "":
+                line = line.split()
+                readname = line[0][1:]
+            elif line.startswith(">"):
+                transcripts_list.append(Transcript(readname, seq))
+                seq = ""
+                line = line.split()
+                readname = line[0][1:]
+            else:
+                seq += line
+        transcripts_list.append(Transcript(readname, seq))
+
+    return transcripts_list
+
+
+def parse_motif_txt(filepath):
+    '''Parses a text file of motifs with only one motif on each line of the file. Returns a list of motif objects.'''
+    motifs_list = []
+
+    with open(args.motifs) as motif_file:
+        for line in motif_file:
+            line = line.strip()
+            if line != "":
+                motifs_list.append(Motif(line.upper()))
+
+    return motifs_list
+
 
 ##################################################################################################################################################################################################################################
 # Classes
@@ -52,12 +96,16 @@ Here the following classes are defined: Motif, Transcript, MotifsImage.
 '''
 
 class Motif:
-    ''''''
+    '''This object will hold information on motif seqs, regex for motif searches, and motif lengths.'''
 
     def __init__(self, motif_seq):
         self.seq = motif_seq
         self.length = len(motif_seq)
         self.re_seq = self.modular_motif()
+
+    def __repr__(self):
+        '''Returns motif sequence as representation of motif object'''
+        return f"motif_{self.seq}"
 
     def modular_motif(self):
         '''Takes a list of motifs and returns a dictionary of ReGexs for motifs as keys that contain ambiguous nucleotides and unmodified motifs that do not contain ambiguous nucleotides. The values are the original motif.'''
@@ -79,6 +127,10 @@ class Transcript:
         self.exons = [(match.start() + 1) for match in re.finditer(r'[A-Z]', self.sequence)]                                                                                           # Adjusted for "true" position in sequence
         self.length = len(self.sequence)
 
+    def __repr__(self):
+        '''Returns read name as representation of transcript object'''
+        return f"transcript_{self.readname}"
+
     def find_motifs(self, motifs_list):
         '''Returns a dictionary (motif : indices) of indices where motifs are present.'''
         self.motif_locations = {}
@@ -87,7 +139,7 @@ class Transcript:
             self.motif_locations[motif] = [x for l in self.motif_locations[motif] for x in l]                                                                                           # Unlisting the list of lists for each motif
 
         self.position_motif = {}
-        for position in range(len(self.sequence)):
+        for position in range(1, (len(self.sequence) + 1)):
             self.position_motif[position] = []
             for motif in self.motif_locations.keys():
                 if (position in self.motif_locations[motif]) and (motif not in self.position_motif[position]):
@@ -140,6 +192,10 @@ class MotifsImage:
         self.color_pairs = {}
         for co_count, motif in enumerate(motifs_list):
             self.color_pairs[motif.seq] = self.colors[co_count]
+
+    def __repr__(self):
+        '''Returns the name of the image as a representation of the image object.'''
+        return f"image_{self.name}"
 
     def create_image(self):
         '''Initializes the image with dimensions from attributes.'''
@@ -310,43 +366,17 @@ if __name__ == "__main__":
 
     args = get_args()
 
-    # List that will hold transcript and motif objects
-    transcripts_list = []
-    motifs_list = []
+    # Lists that will hold transcript and motif objects from input files
+    transcripts_list = parse_fasta(args.fasta)
+    motifs_list = parse_motif_txt(args.motifs)
 
-    # Reading in FASTA file and creating transcript objects
-    with open(args.fasta) as fa_file:
-        readname = ""
-        seq = ""
-        for line in fa_file:
-            line = line.strip()
-            if line.startswith(">") and readname == "":
-                line = line.split()
-                readname = line[0][1:]
-            elif line.startswith(">"):
-                transcripts_list.append(Transcript(readname, seq))
-                seq = ""
-                line = line.split()
-                readname = line[0][1:]
-            else:
-                seq += line
-        transcripts_list.append(Transcript(readname, seq))
-
-    # Reading in motifs file and creating motif objects
-    with open(args.motifs) as motif_file:
-        for line in motif_file:
-            line = line.strip()
-            if line != "":
-                motifs_list.append(Motif(line.upper()))
-
-    # Executing transcript method to find motif positions by transcript
+    # Executing transcript method to find motif positions for all motifs by transcript
     for tran in transcripts_list:
         tran.find_motifs(motifs_list)
 
-    # Capturing input FASTA file name
+    # Capturing input FASTA file name for naming mm_image object
     file_name = re.findall(r"[^\/\\]+(?=\.fasta|\.fa)", args.fasta)[0]
 
     # Creating image object and executing all methods to output png image
     mm_image = MotifsImage(file_name, transcripts_list, motifs_list)
     mm_image.execute_all()
-
